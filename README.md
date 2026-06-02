@@ -72,3 +72,24 @@ left join {{ ref('amount_bins') }} as amount_bins
 This replaces a repeated `case when amount ... then ... end` block with one
 threshold seed, one generated bins model, and ordinary SQL joins wherever the
 bin is needed.
+
+### Join helper
+
+`bin_join` emits the same `left join` condition while reducing repeated SQL:
+
+```sql
+select
+    orders.order_id,
+    orders.amount,
+    amount_bins.label as amount_bin
+
+from {{ ref('orders') }} as orders
+{{ bin_join(
+    value='orders.amount',
+    bins=ref('amount_bins'),
+    bins_alias='amount_bins'
+) }}
+```
+
+`bins_alias` is optional and defaults to `bins`.
+
