@@ -1,0 +1,10 @@
+.venv/
+.vscode/
+.dbt/
+
+models/
+target/
+seeds/
+logs/
+dev.duckdb
+plans.md
