@@ -11,6 +11,22 @@ threshold
 6
 7
 
+## Validate thresholds
+
+```yaml
+version: 2
+
+seeds:
+  - name: amount_thresholds
+    tests:
+      - thresholds_not_null
+```
+
+The package assumes the threshold seed has a column named `threshold`.
+`thresholds_not_null` fails fast when any threshold is null. Duplicate
+thresholds are ignored when bins are generated, so repeated values do not
+create invalid zero-width ranges.
+
 ## Generate bins
 
 ```sql

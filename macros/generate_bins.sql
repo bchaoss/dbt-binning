@@ -1,6 +1,14 @@
 {% macro generate_bins(threshold_relation) %}
 
-with bins as (
+with thresholds as (
+
+    select distinct
+        threshold
+    from {{ threshold_relation }}
+
+),
+
+bins as (
 
     select
         threshold as bin_start,
@@ -8,7 +16,7 @@ with bins as (
             order by threshold
         ) as bin_end
 
-    from {{ threshold_relation }}
+    from thresholds
 
 )
 
