@@ -27,13 +27,10 @@ select
         when bin_end is null
         then cast(bin_start as {{ dbt.type_string() }}) || '+'
 
-        when bin_end = bin_start + 1
-        then cast(bin_start as {{ dbt.type_string() }})
-
         else
             cast(bin_start as {{ dbt.type_string() }})
             || '-'
-            || cast(bin_end - 1 as {{ dbt.type_string() }})
+            || cast(bin_end as {{ dbt.type_string() }})
     end as label
 
 from bins

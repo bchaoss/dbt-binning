@@ -44,10 +44,14 @@ inspect.
 
 | bin_start | bin_end | label |
 | --------- | ------- | ----- |
-| 0         | 2       | 0-1   |
-| 2         | 6       | 2-5   |
-| 6         | 7       | 6     |
+| 0         | 2       | 0-2   |
+| 2         | 6       | 2-6   |
+| 6         | 7       | 6-7   |
 | 7         | null    | 7+    |
+
+Finite labels use continuous boundaries: `0-2` means `[0, 2)`, including the
+start value and excluding the end value. Open-ended labels like `7+` include
+all values greater than or equal to the start.
 
 ## Join from another model
 
