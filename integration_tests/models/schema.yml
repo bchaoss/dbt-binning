@@ -1,0 +1,9 @@
+version: 2
+
+models:
+  - name: amount_bins
+
+    tests:
+      - dbt_binning.generated_ranges_valid
+
+  - name: orders_with_amount_bins

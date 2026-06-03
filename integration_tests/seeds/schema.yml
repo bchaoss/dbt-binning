@@ -1,0 +1,6 @@
+version: 2
+
+seeds:
+  - name: amount_thresholds
+    tests:
+      - dbt_binning.thresholds_not_null
