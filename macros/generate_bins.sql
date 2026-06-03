@@ -1,5 +1,7 @@
 {% macro generate_bins(threshold_relation) %}
 
+{% do config.set('materialized', 'view') %}
+
 with thresholds as (
 
     select distinct
