@@ -2,8 +2,26 @@ version: 2
 
 models:
   - name: amount_bins
-
     tests:
       - dbt_binning.generated_ranges_valid
 
   - name: orders_with_amount_bins
+
+unit_tests:
+  - name: test_amount_bins_normal
+    model: amount_bins
+    given:
+      - input: ref('amount_thresholds')
+    expect:
+      format: csv
+      fixture: expected_amount_bins
+
+  - name: test_amount_bins_unordered_duplicates
+    model: amount_bins
+    given:
+      - input: ref('amount_thresholds')
+        format: csv
+        fixture: amount_thresholds_unordered_duplicates
+    expect:
+      format: csv
+      fixture: expected_amount_bins
