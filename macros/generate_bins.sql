@@ -5,8 +5,10 @@
 with thresholds as (
 
     select distinct
-        threshold
+        cast(threshold as {{ dbt.type_int() }}) as threshold
     from {{ threshold_relation }}
+
+    where threshold is not null
 
 ),
 
