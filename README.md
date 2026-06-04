@@ -9,10 +9,10 @@ The analytics projects often accumulate binning logic like this:
 
 ```sql
 case
-    when amount < 2 then '0-2'
-    when amount < 6 then '2-6'
-    when amount < 7 then '6-7'
-    else '7+'
+    when amount < 10 then '0-10'
+    when amount < 50 then '10-50'
+    when amount < 200 then '50-200'
+    else '200+'
 end
 ```
 
@@ -23,19 +23,19 @@ The problem is that the same business logic often ends up copied across multiple
 Then a threshold changes.
 
 ```text
-0-2
-2-6
-6-7
-7+
+0-10
+10-50
+50-200
+200+
 ```
 
 becomes
 
 ```text
-0-2
-2-5
-5-10
-10+
+0-25
+25-80
+80-199
+199+
 ```
 
 Someone now has to find every CASE WHEN statement and update it correctly.
@@ -52,16 +52,16 @@ For example:
 threshold
 ---------
 0
-2
-6
-7
+10
+50
+200
 ```
 
 This can be a small table or a dbt seed.
 
 Once the thresholds exist as data, the bin definitions can be generated automatically.
 
-> To keep the core concept easy to understand, we’ll first look at a simplified version that handles basic inner boundaries. Later, we'll see how the actual `dbt-binning` package automatically handles open-ended edges like <0 or 7+ under the hood.
+> To keep the core concept easy to understand, we’ll first look at a simplified version that handles basic inner boundaries. Later, we'll see how the actual `dbt-binning` package automatically handles open-ended edges like <0 or 200+ under the hood.
 
 ### Step 1: Store Thresholds
 
@@ -72,9 +72,9 @@ create table thresholds (
 
 insert into thresholds values
 (0),
-(2),
-(6),
-(7);
+(10),
+(50),
+(200);
 ```
 
 The table only stores boundaries.
@@ -96,12 +96,12 @@ from thresholds
 
 Which becomes:
 
-| bin_start | bin_end | label |
-| --------- | ------- | ----- |
-| 0         | 2       | 0-2   |
-| 2         | 6       | 2-6   |
-| 6         | 7       | 6-7   |
-| 7         | null    | 7+    |
+| bin_start | bin_end | label  |
+| --------- | ------- | ------ |
+| 0         | 10      | 0-10   |
+| 10        | 50      | 10-50  |
+| 50        | 200     | 50-200 |
+| 200       | null    | 200+   |
 
 From there, labels can be generated automatically.
 
@@ -166,15 +166,15 @@ inspect.
 
 #### Output
 
-| bin_start | bin_end | label |
-| --------- | ------- | ----- |
-| null      | 0       | <0    |
-| 0         | 2       | 0-2   |
-| 2         | 6       | 2-6   |
-| 6         | 7       | 6-7   |
-| 7         | null    | 7+    |
+| bin_start | bin_end | label  |
+| --------- | ------- | ------ |
+| null      | 0       | <0     |
+| 0         | 10      | 0-10   |
+| 10        | 50      | 10-50  |
+| 50        | 200     | 50-200 |
+| 200       | null    | 200+   |
 
-Finite labels use continuous boundaries: `0-2` means `[0, 2)`, including the start value and excluding the end value. Open-ended labels like `7+` (or `<0`) include all values greater than or equal to the start (or smaller than the end).
+Finite labels use continuous boundaries: `0-10` means `[0, 10)`, including the start value and excluding the end value. Open-ended labels like `200+` (or `<0`) include all values greater than or equal to the start (or smaller than the end).
 
 ### Join from another model
 
@@ -219,7 +219,7 @@ left join {{ ref('amount_bins') }} as bins
 
 This replaces a repeated `case when amount ... then ... end` block with one threshold seed, one generated bins model, and ordinary SQL joins wherever the bin is needed.
 
-> **Why not use `BETWEEN`?** > > Using `between b.bin_start and b.bin_end` creates overlapping boundaries for continuous data (e.g., is `2.0` in `0-2` or `2-6`?). This inequality join guarantees **half-open intervals `[start, end)`**, ensuring each value falls into exactly one bin.
+> **Why not use `BETWEEN`?** > > Using `between b.bin_start and b.bin_end` creates overlapping boundaries for continuous data (e.g., is `10.0` in `0-10` or `10-50`?). This inequality join guarantees **half-open intervals `[start, end)`**, ensuring each value falls into exactly one bin.
 
 
 ### Validate thresholds
