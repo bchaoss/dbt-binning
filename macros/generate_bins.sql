@@ -5,7 +5,7 @@
 with thresholds as (
 
     select distinct
-        cast(threshold as {{ dbt.type_int() }}) as threshold
+        cast(threshold as {{ dbt.type_float() }}) as threshold
     from {{ threshold_relation }}
 
     where threshold is not null
@@ -15,7 +15,7 @@ with thresholds as (
 bins as (
 
     select
-        cast(null as {{ dbt.type_int() }}) as bin_start,
+        cast(null as {{ dbt.type_float() }}) as bin_start,
         min(threshold) as bin_end
     from thresholds
 
@@ -35,15 +35,15 @@ select
     bin_end,
     case
         when bin_start is null
-        then '<' || cast(bin_end as {{ dbt.type_string() }})
+        then '<' || {{ dbt_binning.format_threshold_for_label('bin_end') }}
 
         when bin_end is null
-        then cast(bin_start as {{ dbt.type_string() }}) || '+'
+        then {{ dbt_binning.format_threshold_for_label('bin_start') }} || '+'
 
         else
-            cast(bin_start as {{ dbt.type_string() }})
+            {{ dbt_binning.format_threshold_for_label('bin_start') }}
             || '-'
-            || cast(bin_end as {{ dbt.type_string() }})
+            || {{ dbt_binning.format_threshold_for_label('bin_end') }}
     end as label
 
 from bins
