@@ -178,7 +178,7 @@ Finite labels use continuous boundaries: `0-10` means `[0, 10)`, including the s
 
 ### Join from another model
 
-The package provides a `bin_join` macro to handles the join condition automatically:
+The package provides a `join_bins` macro to handles the join condition automatically:
 
 ```sql
 -- models/orders_with_amount_bins.sql
@@ -188,7 +188,7 @@ select
     amount_bins.label as amount_bin
 
 from {{ ref('orders') }} as orders
-{{ bin_join(
+{{ join_bins(
     value='orders.amount',
     bins=ref('amount_bins'),
     bins_alias='bins'
