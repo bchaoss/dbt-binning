@@ -1,7 +1,14 @@
 # dbt-binning
-## Stop Maintaining CASE WHEN Binning Logic in SQL
 
-One small pattern that made the analytics SQL easier to maintain.
+Stop Maintaining CASE WHEN Binning Logic in SQL.
+
+**A small dbt package for replacing repetitive CASE WHEN binning logic with threshold tables and reusable joins.**
+
+* Store thresholds as data
+* Generate bins automatically
+* Reduce repetitive CASE WHEN / JOIN maintenance
+
+---
 
 ## The Problem
 
@@ -9,6 +16,7 @@ The analytics projects often accumulate binning logic like this:
 
 ```sql
 case
+    when amount < 0 then '<0'
     when amount < 10 then '0-10'
     when amount < 50 then '10-50'
     when amount < 200 then '50-200'
@@ -23,6 +31,7 @@ The problem is that the same business logic often ends up copied across multiple
 Then a threshold changes.
 
 ```text
+<0
 0-10
 10-50
 50-200
@@ -32,6 +41,7 @@ Then a threshold changes.
 becomes
 
 ```text
+<0
 0-25
 25-80
 80-199
@@ -42,7 +52,7 @@ Someone now has to find every CASE WHEN statement and update it correctly.
 
 The work is repetitive, difficult to review, and surprisingly easy to get wrong.
 
-## A Simpler Approach
+## How It Works
 
 Instead of storing the rules inside many CASE WHEN statements, store the thresholds as data.
 
@@ -58,10 +68,6 @@ threshold
 ```
 
 This can be a small table or a dbt seed.
-
-Once the thresholds exist as data, the bin definitions can be generated automatically.
-
-> To keep the core concept easy to understand, we’ll first look at a simplified version that handles basic inner boundaries. Later, we'll see how the actual `dbt-binning` package automatically handles open-ended edges like <0 or 200+ under the hood.
 
 ### Step 1: Store Thresholds
 
@@ -79,29 +85,34 @@ insert into thresholds values
 
 The table only stores boundaries.
 
+Once the thresholds exist as data, the bin definitions can be generated automatically.
+
 ### Step 2: Generate Bin Definitions
 
 Using a window function:
 
 ```sql
+-- Wrapped by: dbt_binning.generate_bins(threshold_relation)
 create view bins AS
 select
     threshold as bin_start,
     lead(threshold) over (
         order by threshold
     ) as bin_end,
-    ... as label
+    -- a fixed way to generate formatted label
+    ... as bin_label
 from thresholds
 ```
 
 Which becomes:
 
-| bin_start | bin_end | label  |
-| --------- | ------- | ------ |
-| 0         | 10      | 0-10   |
-| 10        | 50      | 10-50  |
-| 50        | 200     | 50-200 |
-| 200       | null    | 200+   |
+| bin_start | bin_end | bin_label |
+| --------- | ------- | --------- |
+| null      | 0       | <0        |
+| 0         | 10      | 0-10      |
+| 10        | 50      | 10-50     |
+| 50        | 200     | 50-200    |
+| 200       | null    | 200+      |
 
 From there, labels can be generated automatically.
 
@@ -111,98 +122,17 @@ Once you choose an interval convention, it can be reused for many different binn
 
 ### Step 3: Join Where Needed
 
-Instead of repeating CASE WHEN logic:
+Instead of repeating CASE WHEN logic, the join logic stays the same:
 
 ```sql
-select
-    u.*,
-    b.label
-from users u
-left join bins_with_labels b
-    on u.amount >= b.bin_start
-   and (
-        b.bin_end is null
-        or u.amount < b.bin_end
-   )
-```
-
-Now threshold changes only require updating a small configuration table.
-
-The join logic stays the same.
-
-## Why We Need This Pattern
-
-A few things become easier:
-
-* Thresholds are visible in one place
-* Changes are easier to review in Git
-* Labels stay consistent
-* The same logic can be reused across models
-* There is less SQL to maintain
-
-Most importantly, this shifts your workflow from hardcoding business rules in SQL to managing configuration as data.
-
-## Turning It Into a dbt Package
-
-If you use `dbt` for your analytics data pipeline, I packaged it into a small dbt package called `dbt-binning`, it:
-
-* Store thresholds as data
-* Generate bins automatically
-* Reduce repetitive CASE WHEN / JOIN maintenance
-
-## How to Use the `dbt-binning`
-
-### Generate bins
-
-```sql
--- models/amount_bins.sql
-{{ generate_bins(ref('amount_thresholds')) }}
-```
-
-`amount_bins` is intentionally materialized as a view. 
-
-Threshold tables are usually small, and keeping generated ranges as a view makes changes easy to
-inspect.
-
-#### Output
-
-| bin_start | bin_end | label  |
-| --------- | ------- | ------ |
-| null      | 0       | <0     |
-| 0         | 10      | 0-10   |
-| 10        | 50      | 10-50  |
-| 50        | 200     | 50-200 |
-| 200       | null    | 200+   |
-
-Finite labels use continuous boundaries: `0-10` means `[0, 10)`, including the start value and excluding the end value. Open-ended labels like `200+` (or `<0`) include all values greater than or equal to the start (or smaller than the end).
-
-### Join from another model
-
-The package provides a `join_bins` macro to handles the join condition automatically:
-
-```sql
--- models/orders_with_amount_bins.sql
 select
     orders.order_id,
     orders.amount,
-    amount_bins.label as amount_bin
-
+    bins.bin_label as amount_bin
 from {{ ref('orders') }} as orders
-{{ join_bins(
-    value='orders.amount',
-    bins=ref('amount_bins'),
-    bins_alias='bins'
-) }}
-```
 
-_Note: `bins_alias` is optional and defaults to `bins`._
-
-#### Under the hood
-
-The macro expands to a standard SQL left join, replacing manual boundary join:
-
-```sql
-left join {{ ref('amount_bins') }} as bins
+-- Wrapped by: dbt_binning.join_bins(...)
+left join bins as bins
     on (
         bins.bin_start is null
         and orders.amount < bins.bin_end
@@ -217,22 +147,88 @@ left join {{ ref('amount_bins') }} as bins
     )
 ```
 
-This replaces a repeated `case when amount ... then ... end` block with one threshold seed, one generated bins model, and ordinary SQL joins wherever the bin is needed.
+Now threshold changes only require updating a small configuration table.
 
-> **Why not use `BETWEEN`?** > > Using `between b.bin_start and b.bin_end` creates overlapping boundaries for continuous data (e.g., is `10.0` in `0-10` or `10-50`?). This inequality join guarantees **half-open intervals `[start, end)`**, ensuring each value falls into exactly one bin.
+**Benefits:**
 
+* Thresholds are visible in one place
+* Changes are easier to review in Git
+* Labels stay consistent
+* The same logic can be reused across models
+* There is less SQL to maintain
 
-### Validate thresholds
+---
+
+## Installation
+
+Include the following in your `packages.yml` file:
 
 ```yaml
-version: 2
-
-seeds:
-  - name: amount_thresholds
-    tests:
-      - thresholds_not_null
+packages:
+  - git: "https://github.com/bchaoss/dbt-binning.git"
+    revision: 1.0.0
 ```
 
-The package expects the seed/table to contain a column named `threshold`. The included `thresholds_not_null` test ensures no boundary values are missing.
+Run `dbt deps` to install the package.
 
-Duplicate thresholds are ignored when bins are generated, so repeated values do not create invalid zero-width ranges.
+For more information on using packages in your dbt project, check out the [dbt Documentation](https://docs.getdbt.com/docs/build/packages?version=1.11&name=Core).
+
+## Usage
+
+### generate_bins ([source](https://github.com/bchaoss/dbt-binning/blob/main/macros/generate_bins.sql))
+
+The macro `dbt_binning.generate_bins` generates reusable bin definitions from a threshold table or seed.
+
+**Usage:**
+```sql
+-- models/bins_model_name.sql
+{{ dbt_binning.generate_bins(threshold_relation=ref('thresholds_model_name')) }}
+-- Generates the bins VIEW from thresholds config
+```
+
+**Parameters:**
+
+- `threshold_relation`: model containing a numeric `threshold` column.
+
+Returns a view exposing three columns:
+
+- bin_start
+- bin_end
+- bin_label
+
+> _Note:_ 
+> 
+> - **`generate_bins` materializes the bins model as a view by design.** Threshold tables are usually small, and keeping them as views makes changes easy to inspect.
+> 
+> - **Column `bin_label` follows one of three formats**, to ensure that each value maps to exactly one bin:
+>   - "start-end" represents `[start, end)`;
+>   - "start+" includes values greater than or equal to `start`;
+>   - "<end" includes values smaller than `end`.
+> 
+> - **Threshold values must be numeric**: non-numeric values will fail during execution; NULL and duplicate values will be ignored.
+
+### join_bins ([source](https://github.com/bchaoss/dbt-binning/blob/main/macros/join_bins.sql))
+
+The macro `dbt_binning.join_bins` handles the join condition automatically.
+
+**Usage:**
+```sql
+-- models/model_with_bins.sql
+select
+    source.id,
+    source.value_column,
+    bins.bin_label as value_bin
+
+from {{ ref('source_model_name') }} as source
+{{ dbt_binning.join_bins(
+    value_column='source.value_column',
+    bins=ref('bins_model_name'),
+    bins_alias='bins'
+) }} -- Handles the LEFT JOIN logic automatically
+```
+
+**Parameters:**
+
+- `value_column`: the expression to classify into bins.
+- `bins`: the generated bins relation.
+- `bins_alias`: optional alias for the joined bins relation. Defaults to `bins`.
