@@ -44,7 +44,7 @@ select
             {{ dbt_binning.format_threshold_for_label('bin_start') }}
             || '-'
             || {{ dbt_binning.format_threshold_for_label('bin_end') }}
-    end as label
+    end as bin_label
 
 from bins
 

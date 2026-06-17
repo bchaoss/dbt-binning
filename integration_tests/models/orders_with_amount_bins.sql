@@ -5,7 +5,7 @@
 select
     orders.order_id,
     orders.amount,
-    amount_bins.label as amount_bin
+    amount_bins.bin_label as amount_bin
 
 from {{ ref('orders') }} orders
 {{ dbt_binning.join_bins(
